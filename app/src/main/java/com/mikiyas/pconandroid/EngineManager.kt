@@ -170,12 +170,126 @@ object EngineManager {
         )
     }
 
+    // ------------------------------------------------------------------
+    // Engine layer 3: Wine (downloadable pack).
+    //
+    // The pack (~199 MB) is built by scripts/make-wine-pack.sh and
+    // published on this repo's "wine-pack-11.20" release. The app
+    // downloads it once and extracts it into the Ubuntu rootfs:
+    //   opt/wine/          Wine 11.20 amd64-wow64 (Kron4ek build)
+    //   usr/lib/x86_64-linux-gnu/ + lib64/   x86_64 glibc & friends
+    //   usr/lib/box64-x86_64-linux-gnu/      Box64's bundled x86 libs
+    // Windows programs then run as: box64 /opt/wine/bin/wine <exe>
+    // ------------------------------------------------------------------
+
+    const val WINE_PACK_URL =
+        "https://github.com/Micheyas/PC-on-Android/releases/download/wine-pack-11.20/wine-pack.tgz"
+
+    fun isWineInstalled(context: Context): Boolean =
+        File(glibcRootfsDir(context), "opt/wine/bin/wine").exists()
+
+    private fun winePackFile(context: Context): File =
+        File(ContainerManager.containerDir(context), "downloads/wine-pack.tgz")
+
+    /**
+     * Downloads the Wine pack (if needed) and extracts it into the
+     * Ubuntu rootfs. [onProgress] receives human-readable status lines.
+     * The downloaded archive is deleted after a successful install to
+     * avoid keeping two copies of ~199 MB on the phone.
+     */
+    fun installWine(context: Context, onProgress: (String) -> Unit): String {
+        val pack = winePackFile(context)
+        return try {
+            if (!pack.exists() || pack.length() == 0L) {
+                pack.parentFile?.mkdirs()
+                onProgress("Downloading Wine pack (about 199 MB)…")
+                downloadFile(WINE_PACK_URL, pack) { mb ->
+                    onProgress("Downloading Wine pack… $mb MB")
+                }
+            }
+            onProgress("Download complete. Installing Wine into the engine…")
+            glibcRootfsDir(context).mkdirs()
+            pack.inputStream().use { input ->
+                TarExtractor.extractTarGz(input, glibcRootfsDir(context))
+            }
+            if (isWineInstalled(context)) {
+                pack.delete()
+                "Wine installed: Wine 11.20 ready. Now tap RUN WINE TEST."
+            } else {
+                "Wine pack extracted but opt/wine/bin/wine is missing — the pack may be damaged."
+            }
+        } catch (e: Exception) {
+            "Wine install failed: ${e.message}"
+        }
+    }
+
+    /** First Wine proof: ask Wine (through Box64) for its version. */
+    fun runWineTest(context: Context): TestResult {
+        val script = listOf(
+            "echo WINE_TEST_OK",
+            "box64 /opt/wine/bin/wine --version",
+            "echo WINE_TEST_DONE"
+        ).joinToString("; ")
+
+        val wineEnv = mapOf(
+            "WINEPREFIX" to "/root/.wine",
+            "WINEDEBUG" to "-all",
+            "BOX64_LD_LIBRARY_PATH" to
+                "/usr/lib/x86_64-linux-gnu:/usr/lib/box64-x86_64-linux-gnu:/opt/wine/lib",
+            "BOX64_PATH" to "/opt/wine/bin:/usr/local/bin:/usr/bin:/bin"
+        )
+        val (exitCode, log) = execInRootfs(context, glibcRootfsDir(context), script, 120, wineEnv)
+        return TestResult(
+            success = exitCode == 0 &&
+                log.contains("WINE_TEST_OK") &&
+                log.contains("WINE_TEST_DONE") &&
+                log.contains("wine-11"),
+            log = log.ifBlank { "[no output — exit code $exitCode]" }
+        )
+    }
+
+    /** Streams [url] to [dest], reporting whole megabytes downloaded. */
+    private fun downloadFile(url: String, dest: File, onMb: (Long) -> Unit) {
+        val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        conn.instanceFollowRedirects = true
+        conn.connectTimeout = 30_000
+        conn.readTimeout = 60_000
+        conn.connect()
+        if (conn.responseCode !in 200..299) {
+            throw IllegalStateException("Download server answered ${conn.responseCode}")
+        }
+        val tmp = File(dest.parentFile, dest.name + ".part")
+        conn.inputStream.use { input ->
+            java.io.FileOutputStream(tmp).use { out ->
+                val buf = ByteArray(256 * 1024)
+                var total = 0L
+                var lastReported = -1L
+                while (true) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    out.write(buf, 0, n)
+                    total += n
+                    val mb = total / (1024 * 1024)
+                    if (mb != lastReported) {
+                        lastReported = mb
+                        onMb(mb)
+                    }
+                }
+            }
+        }
+        if (!tmp.renameTo(dest)) {
+            tmp.copyTo(dest, overwrite = true)
+            tmp.delete()
+        }
+    }
+
     /** Runs /bin/sh -c [script] inside [rootfs] through PRoot. Returns (exitCode, combinedOutput). */
     private fun execInRootfs(
         context: Context,
         rootfs: File,
         script: String,
-        timeoutSeconds: Long
+        timeoutSeconds: Long,
+        extraEnv: Map<String, String> = emptyMap()
     ): Pair<Int?, String> {
         val nativeDir = context.applicationInfo.nativeLibraryDir
         val tmpDir = File(ContainerManager.containerDir(context), "runtime/tmp").apply { mkdirs() }
@@ -202,6 +316,7 @@ object EngineManager {
                     environment()["TERM"] = "xterm"
                     environment()["PATH"] =
                         "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+                    extraEnv.forEach { (k, v) -> environment()[k] = v }
                 }
                 .start()
 

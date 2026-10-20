@@ -11,3 +11,6 @@
 # Engine 2 binaries are fetched by scripts/fetch-engine2.sh at build time
 /app/src/main/assets/ubuntu.tgz
 /app/src/main/assets/engine2-overlay.tgz
+
+# Wine pack build output/cache (built by scripts/make-wine-pack.sh)
+/dist/

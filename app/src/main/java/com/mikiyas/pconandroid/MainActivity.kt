@@ -62,6 +62,14 @@ class MainActivity : AppCompatActivity() {
         val testButton = findViewById<Button>(R.id.runEngineTestButton)
         val install2Button = findViewById<Button>(R.id.installEngine2Button)
         val translationTestButton = findViewById<Button>(R.id.runTranslationTestButton)
+        val installWineButton = findViewById<Button>(R.id.installWineButton)
+        val wineTestButton = findViewById<Button>(R.id.runWineTestButton)
+
+        fun refreshWineStatus() {
+            findViewById<TextView>(R.id.wineStatus).text =
+                "Wine 11.20: ${if (EngineManager.isWineInstalled(this)) "installed" else "not installed yet (one-time download)"}"
+        }
+        refreshWineStatus()
 
         installButton.setOnClickListener {
             installButton.isEnabled = false
@@ -111,6 +119,34 @@ class MainActivity : AppCompatActivity() {
                     engineLog.text =
                         (if (result.success) "TRANSLATION TEST PASSED ✅\n\n" else "TRANSLATION TEST DID NOT PASS\n\n") + result.log
                     translationTestButton.isEnabled = true
+                }
+            }.start()
+        }
+
+        installWineButton.setOnClickListener {
+            installWineButton.isEnabled = false
+            engineLog.text = "Starting Wine download…"
+            Thread {
+                val status = EngineManager.installWine(this) { progress ->
+                    runOnUiThread { engineLog.text = progress }
+                }
+                runOnUiThread {
+                    engineLog.text = status
+                    refreshWineStatus()
+                    installWineButton.isEnabled = true
+                }
+            }.start()
+        }
+
+        wineTestButton.setOnClickListener {
+            wineTestButton.isEnabled = false
+            engineLog.text = "Running wine test — first run can take a while…"
+            Thread {
+                val result = EngineManager.runWineTest(this)
+                runOnUiThread {
+                    engineLog.text =
+                        (if (result.success) "WINE TEST PASSED ✅\n\n" else "WINE TEST DID NOT PASS\n\n") + result.log
+                    wineTestButton.isEnabled = true
                 }
             }.start()
         }
