@@ -36,14 +36,28 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.pickExeButton).setOnClickListener {
             pickFile.launch(arrayOf("*/*"))
         }
+
+        val containerReady = ContainerManager.ensureContainer(this)
+        val engineReady = ContainerManager.engineInstalled(this)
+        findViewById<TextView>(R.id.engineStatus).text = listOf(
+            "Container: ${if (containerReady) "ready" else "could not be created"}",
+            "Engine (Wine + Box64): ${if (engineReady) "installed" else "not bundled yet — arrives in the next build step"}",
+            "Free space: ${ContainerManager.freeSpaceMb(this)} MB"
+        ).joinToString("\n")
     }
 
     private fun showPickedFile(uri: Uri) {
         val name = queryFileName(uri) ?: uri.lastPathSegment ?: "unknown file"
-        pickedFileText.text =
-            "You picked: $name\n\nRunning Windows programs arrives in the next step — " +
-            "the Wine + Box64 engine gets bundled here. This screen proves the picker " +
-            "and the phone detection work."
+        val result = try {
+            contentResolver.openInputStream(uri)?.use { ExeInspector.inspect(it) }
+        } catch (e: Exception) {
+            null
+        }
+        pickedFileText.text = if (result == null) {
+            "You picked: $name\n\nCouldn't open that file for inspection."
+        } else {
+            "You picked: $name\n\n${result.summary}\n${result.detail}"
+        }
     }
 
     private fun queryFileName(uri: Uri): String? {
