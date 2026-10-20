@@ -29,7 +29,7 @@ object EngineManager {
         rootfs.mkdirs()
         File(ContainerManager.containerDir(context), "runtime/tmp").mkdirs()
         return try {
-            context.assets.open("rootfs.tar.gz").use { input ->
+            context.assets.open("rootfs.tgz").use { input ->
                 TarExtractor.extractTarGz(input, rootfs)
             }
             if (isInstalled(context)) {
