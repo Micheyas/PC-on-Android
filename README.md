@@ -8,7 +8,7 @@ for people who have no PC.
 
 ## Where this is
 
-**Starter skeleton (v0.1).** A Kotlin app shell that already does two real things:
+**Starter skeleton (v0.2).** A Kotlin app shell that already does two real things:
 
 1. **Device profiler** (`DeviceProfiler.kt`) — detects the phone's chip, GPU
    family (Adreno vs Mali) and RAM, and picks the recommended graphics driver.
