@@ -6,7 +6,11 @@
 # The big binaries are deliberately NOT committed to git — this script
 # fetches them from their official sources on every build:
 #   - Ubuntu 24.04 base rootfs (arm64, glibc)   cdimage.ubuntu.com
-#   - Box64 0.4.3 arm64 .deb                    archive.ubuntu.com pool
+#   - Box64 0.3.8 arm64 .deb                    archive.ubuntu.com pool
+#     (0.4.3 from the same pool is built for GLIBC_2.43 and REFUSES to
+#      run on 24.04's glibc 2.39 — the v0.7 on-phone failure. 0.3.8
+#      needs at most GLIBC_2.38. The guard below keeps this pairing
+#      honest if the versions are ever bumped.)
 #   - busybox x86_64 (static, musl) test file   busybox.net
 # The .deb is unpacked here and only the runnable pieces are re-packed
 # into engine2-overlay.tgz, which the app extracts over the Ubuntu rootfs.
@@ -18,7 +22,8 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 UBUNTU_URL="https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.5-base-arm64.tar.gz"
-BOX64_DEB_URL="https://archive.ubuntu.com/ubuntu/pool/universe/b/box64/box64_0.4.3-3+dfsg-1_arm64.deb"
+BOX64_DEB_URL="https://archive.ubuntu.com/ubuntu/pool/universe/b/box64/box64_0.3.8+dfsg-1_arm64.deb"
+ROOTFS_GLIBC="2.39"   # glibc shipped in the Ubuntu 24.04 base rootfs
 BUSYBOX_X64_URL="https://busybox.net/downloads/binaries/1.35.0-x86_64-linux-musl/busybox"
 
 # Download with resume: some networks cut long transfers mid-file.
@@ -57,6 +62,18 @@ if [ ! -s "$ASSETS/engine2-overlay.tgz" ]; then
     dpkg-deb -x "$WORK/box64.deb" "$WORK/deb"
   else
     (cd "$WORK/deb" && ar x "$WORK/box64.deb" && tar -xf data.tar.*)
+  fi
+
+  # Guard: Box64's required glibc must not exceed the rootfs glibc,
+  # or the loader rejects it on the phone (the v0.7 failure). Fail the
+  # build here instead of shipping a broken engine.
+  if command -v readelf >/dev/null 2>&1; then
+    NEED="$(readelf -V "$WORK/deb/usr/bin/box64" | grep -oE 'GLIBC_[0-9.]+' | sort -Vu | tail -1 | sed 's/GLIBC_//')"
+    if [ "$(printf '%s\n%s\n' "$ROOTFS_GLIBC" "$NEED" | sort -V | head -1)" != "$NEED" ] && [ "$NEED" != "$ROOTFS_GLIBC" ]; then
+      echo "Box64 needs GLIBC_$NEED but the rootfs has $ROOTFS_GLIBC — refusing to stage a broken pair" >&2
+      exit 1
+    fi
+    echo "Box64 glibc check: needs GLIBC_$NEED, rootfs has $ROOTFS_GLIBC — OK"
   fi
 
   OVERLAY="$WORK/overlay"
