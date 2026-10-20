@@ -257,25 +257,36 @@ object EngineManager {
     /**
      * The first real Windows program: plink.exe (PuTTY's console tool,
      * a 64-bit Windows binary) run through Box64 + Wine, asked for its
-     * version. The first Wine program run also creates the Wine prefix
-     * (/root/.wine), so this can take a couple of minutes.
+     * version.
+     *
+     * Staged on purpose: Wine 11.20 crashed this step with an ntdll
+     * assertion, and Wine 10.0 ran it silently empty (all diagnostics
+     * were muted), so this version boots the prefix first, keeps
+     * Wine's error channel ON, and prints each step's exit code.
      */
     fun runFirstExeTest(context: Context): TestResult {
         ensureTestExe(context)
         val script = listOf(
             "echo EXE_TEST_OK",
-            "box64 /opt/wine/bin/wine /opt/tests/plink.exe -V",
+            "box64 /opt/wine/bin/wine wineboot -i > /root/boot.log 2>&1",
+            "echo BOOT_EXIT=\$?",
+            "tail -n 10 /root/boot.log",
+            "box64 /opt/wine/bin/wine /opt/tests/plink.exe -V > /root/plink.log 2>&1",
+            "echo PLINK_EXIT=\$?",
+            "cat /root/plink.log",
             "echo EXE_TEST_DONE"
         ).joinToString("; ")
 
-        val wineEnv = wineEnv()
-        val (exitCode, log) = execInRootfs(context, glibcRootfsDir(context), script, 240, wineEnv)
+        // Same environment as the other Wine runs, but with the error
+        // channel audible so a failure explains itself.
+        val wineEnv = wineEnv() + ("WINEDEBUG" to "err")
+        val (_, log) = execInRootfs(context, glibcRootfsDir(context), script, 360, wineEnv)
+        val plinkExit = Regex("PLINK_EXIT=(\\d+)").find(log)?.groupValues?.get(1)
         return TestResult(
-            success = exitCode == 0 &&
-                log.contains("EXE_TEST_OK") &&
-                log.contains("EXE_TEST_DONE") &&
-                log.contains("plink"),
-            log = log.ifBlank { "[no output — exit code $exitCode]" }
+            success = log.contains("EXE_TEST_DONE") &&
+                plinkExit == "0" &&
+                log.contains("plink:"),
+            log = log.ifBlank { "[no output]" }
         )
     }
 
