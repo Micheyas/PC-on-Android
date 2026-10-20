@@ -36,6 +36,12 @@ jobs:
           done
           ls -lh app/src/main/assets/plink.exe app/src/main/assets/putty.exe
 
+      - name: Restore fixed debug keystore (stable signature across builds)
+        run: |
+          mkdir -p ~/.android
+          echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > ~/.android/debug.keystore
+          ls -l ~/.android/debug.keystore
+
       - name: Build debug APK
         run: ./gradlew assembleDebug
 
