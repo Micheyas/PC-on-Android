@@ -363,10 +363,43 @@ object EngineManager {
      * Installs the X server + VNC server into the Ubuntu guest with apt
      * (the guest shares the phone's network). One-time, a few minutes.
      */
+    /**
+     * Writes the phone's own DNS servers into the guest's
+     * /etc/resolv.conf (host-side, before PRoot starts). The guest
+     * cannot use Android's resolver, and public DNS (8.8.8.8) is
+     * unreachable on some carriers — v0.15's graphics install failed
+     * with "Temporary failure resolving 'ports.ubuntu.com'" for
+     * exactly this reason. Public DNS stays as a last fallback.
+     */
+    private fun plantGuestDns(context: Context) {
+        val servers = mutableListOf<String>()
+        try {
+            val cm = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+                as android.net.ConnectivityManager
+            val networks = listOfNotNull(cm.activeNetwork) + cm.allNetworks.toList()
+            for (network in networks.distinct()) {
+                cm.getLinkProperties(network)?.dnsServers?.forEach { addr ->
+                    addr.hostAddress?.let { if (it !in servers) servers.add(it) }
+                }
+            }
+        } catch (e: Exception) { /* fall through to defaults */ }
+        servers.addAll(listOf("8.8.8.8", "1.1.1.1"))
+        val resolv = File(glibcRootfsDir(context), "etc/resolv.conf")
+        try {
+            // The base image ships resolv.conf as a symlink; delete
+            // replaces the link itself, not whatever it points at.
+            resolv.delete()
+            resolv.parentFile?.mkdirs()
+            resolv.writeText(servers.joinToString("") { "nameserver $it\n" })
+        } catch (e: Exception) { /* the probe in the log will show it */ }
+    }
+
     fun installGraphics(context: Context): String {
+        plantGuestDns(context)
         val script = listOf(
-            "rm -f /etc/resolv.conf",
-            "printf 'nameserver 8.8.8.8\\nnameserver 1.1.1.1\\n' > /etc/resolv.conf",
+            "cat /etc/resolv.conf",
+            "getent hosts ports.ubuntu.com > /dev/null 2>&1",
+            "echo DNS_PROBE_EXIT=\$?",
             "export DEBIAN_FRONTEND=noninteractive",
             "apt-get update -y > /root/apt.log 2>&1",
             "echo APT_UPDATE_EXIT=\$?",
