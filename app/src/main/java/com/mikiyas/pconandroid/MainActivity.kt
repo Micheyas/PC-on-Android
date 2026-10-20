@@ -64,6 +64,7 @@ class MainActivity : AppCompatActivity() {
         val translationTestButton = findViewById<Button>(R.id.runTranslationTestButton)
         val installWineButton = findViewById<Button>(R.id.installWineButton)
         val wineTestButton = findViewById<Button>(R.id.runWineTestButton)
+        val exeTestButton = findViewById<Button>(R.id.runExeTestButton)
 
         fun refreshWineStatus() {
             findViewById<TextView>(R.id.wineStatus).text =
@@ -147,6 +148,19 @@ class MainActivity : AppCompatActivity() {
                     engineLog.text =
                         (if (result.success) "WINE TEST PASSED ✅\n\n" else "WINE TEST DID NOT PASS\n\n") + result.log
                     wineTestButton.isEnabled = true
+                }
+            }.start()
+        }
+
+        exeTestButton.setOnClickListener {
+            exeTestButton.isEnabled = false
+            engineLog.text = "Running a real Windows program (plink.exe) — the first run also builds the Wine prefix, give it up to a few minutes…"
+            Thread {
+                val result = EngineManager.runFirstExeTest(this)
+                runOnUiThread {
+                    engineLog.text =
+                        (if (result.success) "FIRST .EXE RAN ✅\n\n" else "EXE TEST DID NOT PASS\n\n") + result.log
+                    exeTestButton.isEnabled = true
                 }
             }.start()
         }

@@ -223,6 +223,53 @@ object EngineManager {
         }
     }
 
+
+    /** Environment every Wine invocation needs inside the guest. */
+    private fun wineEnv(): Map<String, String> = mapOf(
+        "WINEPREFIX" to "/root/.wine",
+        "WINEDEBUG" to "-all",
+        "BOX64_LD_LIBRARY_PATH" to
+            "/usr/lib/x86_64-linux-gnu:/usr/lib/box64-x86_64-linux-gnu:/opt/wine/lib",
+        "BOX64_PATH" to "/opt/wine/bin:/usr/local/bin:/usr/bin:/bin"
+    )
+
+    /** Copies the bundled test program (plink.exe) into the Ubuntu rootfs. */
+    private fun ensureTestExe(context: Context): File {
+        val dest = File(glibcRootfsDir(context), "opt/tests/plink.exe")
+        if (!dest.exists()) {
+            dest.parentFile?.mkdirs()
+            context.assets.open("plink.exe").use { input ->
+                dest.outputStream().use { out -> input.copyTo(out) }
+            }
+        }
+        return dest
+    }
+
+    /**
+     * The first real Windows program: plink.exe (PuTTY's console tool,
+     * a 64-bit Windows binary) run through Box64 + Wine, asked for its
+     * version. The first Wine program run also creates the Wine prefix
+     * (/root/.wine), so this can take a couple of minutes.
+     */
+    fun runFirstExeTest(context: Context): TestResult {
+        ensureTestExe(context)
+        val script = listOf(
+            "echo EXE_TEST_OK",
+            "box64 /opt/wine/bin/wine /opt/tests/plink.exe -V",
+            "echo EXE_TEST_DONE"
+        ).joinToString("; ")
+
+        val wineEnv = wineEnv()
+        val (exitCode, log) = execInRootfs(context, glibcRootfsDir(context), script, 240, wineEnv)
+        return TestResult(
+            success = exitCode == 0 &&
+                log.contains("EXE_TEST_OK") &&
+                log.contains("EXE_TEST_DONE") &&
+                log.contains("plink"),
+            log = log.ifBlank { "[no output — exit code $exitCode]" }
+        )
+    }
+
     /** First Wine proof: ask Wine (through Box64) for its version. */
     fun runWineTest(context: Context): TestResult {
         val script = listOf(
@@ -231,13 +278,7 @@ object EngineManager {
             "echo WINE_TEST_DONE"
         ).joinToString("; ")
 
-        val wineEnv = mapOf(
-            "WINEPREFIX" to "/root/.wine",
-            "WINEDEBUG" to "-all",
-            "BOX64_LD_LIBRARY_PATH" to
-                "/usr/lib/x86_64-linux-gnu:/usr/lib/box64-x86_64-linux-gnu:/opt/wine/lib",
-            "BOX64_PATH" to "/opt/wine/bin:/usr/local/bin:/usr/bin:/bin"
-        )
+        val wineEnv = wineEnv()
         val (exitCode, log) = execInRootfs(context, glibcRootfsDir(context), script, 120, wineEnv)
         return TestResult(
             success = exitCode == 0 &&
