@@ -43,15 +43,25 @@ class MainActivity : AppCompatActivity() {
             findViewById<TextView>(R.id.engineStatus).text = listOf(
                 "Container: ${if (containerReady) "ready" else "could not be created"}",
                 "Engine base (PRoot + Linux): ${if (EngineManager.isInstalled(this)) "installed" else "not installed yet"}",
-                "Wine + Box64: arrives with the full engine rootfs",
+                "Wine: arrives as a downloadable pack on this engine",
                 "Free space: ${ContainerManager.freeSpaceMb(this)} MB"
             ).joinToString("\n")
         }
         refreshEngineStatus()
 
+        fun refreshEngine2Status() {
+            findViewById<TextView>(R.id.engine2Status).text = listOf(
+                "Ubuntu (glibc) rootfs: ${if (EngineManager.isGlibcInstalled(this)) "installed" else "not installed yet"}",
+                "Box64 translator: ${if (EngineManager.isBox64Installed(this)) "installed" else "not installed yet"}"
+            ).joinToString("\n")
+        }
+        refreshEngine2Status()
+
         val engineLog = findViewById<TextView>(R.id.engineLog)
         val installButton = findViewById<Button>(R.id.installEngineButton)
         val testButton = findViewById<Button>(R.id.runEngineTestButton)
+        val install2Button = findViewById<Button>(R.id.installEngine2Button)
+        val translationTestButton = findViewById<Button>(R.id.runTranslationTestButton)
 
         installButton.setOnClickListener {
             installButton.isEnabled = false
@@ -75,6 +85,32 @@ class MainActivity : AppCompatActivity() {
                     engineLog.text =
                         (if (result.success) "ENGINE TEST PASSED ✅\n\n" else "ENGINE TEST DID NOT PASS\n\n") + result.log
                     testButton.isEnabled = true
+                }
+            }.start()
+        }
+
+        install2Button.setOnClickListener {
+            install2Button.isEnabled = false
+            engineLog.text = "Installing engine 2 (Ubuntu + Box64) — this one is bigger, give it a moment…"
+            Thread {
+                val status = EngineManager.installEngine2(this)
+                runOnUiThread {
+                    engineLog.text = status
+                    refreshEngine2Status()
+                    install2Button.isEnabled = true
+                }
+            }.start()
+        }
+
+        translationTestButton.setOnClickListener {
+            translationTestButton.isEnabled = false
+            engineLog.text = "Running translation test…"
+            Thread {
+                val result = EngineManager.runTranslationTest(this)
+                runOnUiThread {
+                    engineLog.text =
+                        (if (result.success) "TRANSLATION TEST PASSED ✅\n\n" else "TRANSLATION TEST DID NOT PASS\n\n") + result.log
+                    translationTestButton.isEnabled = true
                 }
             }.start()
         }

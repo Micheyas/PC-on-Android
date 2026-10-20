@@ -78,6 +78,9 @@ object TarExtractor {
                 'x', 'g' -> { // pax headers: not needed for rootfs archives
                     skipFully(stream, dataBlocks)
                 }
+                '3', '4', '6', '7' -> { // device nodes / fifos: can't and needn't create them
+                    skipFully(stream, dataBlocks)
+                }
                 else -> { // regular file ('0' or '\0')
                     target.parentFile?.mkdirs()
                     // Never write THROUGH a leftover symlink: FileOutputStream

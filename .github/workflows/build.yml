@@ -21,6 +21,9 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Fetch engine 2 assets (Ubuntu rootfs + Box64)
+        run: bash scripts/fetch-engine2.sh
+
       - name: Build debug APK
         run: ./gradlew assembleDebug
 
