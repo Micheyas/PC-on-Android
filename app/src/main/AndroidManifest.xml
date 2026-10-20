@@ -5,6 +5,7 @@
          v0.9 shipped without this and the download died with
          "Permission denied (missing INTERNET permission?)". -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:allowBackup="true"

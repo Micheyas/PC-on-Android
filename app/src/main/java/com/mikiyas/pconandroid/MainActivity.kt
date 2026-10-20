@@ -181,9 +181,11 @@ class MainActivity : AppCompatActivity() {
 
         setupGraphicsButton.setOnClickListener {
             setupGraphicsButton.isEnabled = false
-            engineLog.text = "Setting up graphics inside the engine (Ubuntu downloads Xvfb + x11vnc) — give it a few minutes…"
+            engineLog.text = "Starting graphics download…"
             Thread {
-                val status = EngineManager.installGraphics(this)
+                val status = EngineManager.installGraphics(this) { progress ->
+                    runOnUiThread { engineLog.text = progress }
+                }
                 runOnUiThread {
                     engineLog.text = status
                     refreshGraphicsStatus()

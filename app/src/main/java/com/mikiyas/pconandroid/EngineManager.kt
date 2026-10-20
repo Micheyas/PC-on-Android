@@ -363,55 +363,44 @@ object EngineManager {
      * Installs the X server + VNC server into the Ubuntu guest with apt
      * (the guest shares the phone's network). One-time, a few minutes.
      */
+    const val GRAPHICS_PACK_URL =
+        "https://github.com/Micheyas/PC-on-Android/releases/download/graphics-pack-1/graphics-pack.tgz"
+
+    private fun graphicsPackFile(context: Context): File =
+        File(ContainerManager.containerDir(context), "downloads/graphics-pack.tgz")
+
     /**
-     * Writes the phone's own DNS servers into the guest's
-     * /etc/resolv.conf (host-side, before PRoot starts). The guest
-     * cannot use Android's resolver, and public DNS (8.8.8.8) is
-     * unreachable on some carriers — v0.15's graphics install failed
-     * with "Temporary failure resolving 'ports.ubuntu.com'" for
-     * exactly this reason. Public DNS stays as a last fallback.
+     * Installs the graphics layer from its downloadable pack: Xvfb +
+     * x11vnc and their full arm64 dependency closure from Ubuntu
+     * noble, extracted raw into the rootfs. (v0.15/v0.16 tried apt
+     * inside the guest; the guest has no working DNS route on the
+     * user's carrier — "Temporary failure resolving
+     * ports.ubuntu.com" — so, like Wine, graphics ships as a pack
+     * the app itself downloads.) Archive deleted after install.
      */
-    private fun plantGuestDns(context: Context) {
-        val servers = mutableListOf<String>()
-        try {
-            val cm = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
-                as android.net.ConnectivityManager
-            val networks = listOfNotNull(cm.activeNetwork) + cm.allNetworks.toList()
-            for (network in networks.distinct()) {
-                cm.getLinkProperties(network)?.dnsServers?.forEach { addr ->
-                    addr.hostAddress?.let { if (it !in servers) servers.add(it) }
+    fun installGraphics(context: Context, onProgress: (String) -> Unit): String {
+        val pack = graphicsPackFile(context)
+        return try {
+            if (!pack.exists() || pack.length() == 0L) {
+                pack.parentFile?.mkdirs()
+                onProgress("Downloading graphics pack (about 78 MB)…")
+                downloadFile(GRAPHICS_PACK_URL, pack) { mb ->
+                    onProgress("Downloading graphics pack… $mb MB")
                 }
             }
-        } catch (e: Exception) { /* fall through to defaults */ }
-        servers.addAll(listOf("8.8.8.8", "1.1.1.1"))
-        val resolv = File(glibcRootfsDir(context), "etc/resolv.conf")
-        try {
-            // The base image ships resolv.conf as a symlink; delete
-            // replaces the link itself, not whatever it points at.
-            resolv.delete()
-            resolv.parentFile?.mkdirs()
-            resolv.writeText(servers.joinToString("") { "nameserver $it\n" })
-        } catch (e: Exception) { /* the probe in the log will show it */ }
-    }
-
-    fun installGraphics(context: Context): String {
-        plantGuestDns(context)
-        val script = listOf(
-            "cat /etc/resolv.conf",
-            "getent hosts ports.ubuntu.com > /dev/null 2>&1",
-            "echo DNS_PROBE_EXIT=\$?",
-            "export DEBIAN_FRONTEND=noninteractive",
-            "apt-get update -y > /root/apt.log 2>&1",
-            "echo APT_UPDATE_EXIT=\$?",
-            "apt-get install -y xvfb x11vnc >> /root/apt.log 2>&1",
-            "echo APT_INSTALL_EXIT=\$?",
-            "tail -n 20 /root/apt.log"
-        ).joinToString("; ")
-        val (_, log) = execInRootfs(context, glibcRootfsDir(context), script, 900)
-        return if (isGraphicsInstalled(context)) {
-            "Graphics installed: X server + VNC are ready in the engine.\n\n$log"
-        } else {
-            "Graphics install did not finish — the log tail says why:\n\n$log"
+            onProgress("Download complete. Installing graphics into the engine…")
+            glibcRootfsDir(context).mkdirs()
+            pack.inputStream().use { input ->
+                TarExtractor.extractTarGz(input, glibcRootfsDir(context))
+            }
+            if (isGraphicsInstalled(context)) {
+                pack.delete()
+                "Graphics installed: X server + VNC are ready. Now tap START WINDOWS SCREEN (PUTTY)."
+            } else {
+                "Graphics pack extracted but usr/bin/Xvfb is missing — the pack may be damaged."
+            }
+        } catch (e: Exception) {
+            "Graphics install failed: ${e.message}"
         }
     }
 
@@ -447,6 +436,7 @@ object EngineManager {
         if (isGraphicsRunning()) return "Graphics session is already running."
         ensureGuestProgram(context, "putty.exe")
         val script = listOf(
+            "if [ ! -f /root/.fonts-done ]; then for d in /usr/share/fonts/X11/*/; do mkfontdir \"$d\" > /dev/null 2>&1; done; touch /root/.fonts-done; fi",
             // Bracketed patterns: pkill -f must not match this script's
             // own command line (which contains the same words).
             "pkill -f '[X]vfb' 2>/dev/null; pkill -f '[x]11vnc' 2>/dev/null; pkill -f '[p]utty.exe' 2>/dev/null; pkill -f '[w]ineserver' 2>/dev/null; sleep 1",
