@@ -11,6 +11,13 @@ import androidx.appcompat.app.AppCompatActivity
 class MainActivity : AppCompatActivity() {
 
     private lateinit var pickedFileText: TextView
+    private lateinit var runMyExeButton: Button
+
+    // The last program the user picked: a full copy inside app storage
+    // (content URIs can't be read by the engine), plus its PE reading.
+    private var pickedExeFile: java.io.File? = null
+    private var pickedExeInfo: ExeInspector.Result? = null
+    private var pickedExeName: String = ""
 
     private val pickFile =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -22,6 +29,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         pickedFileText = findViewById(R.id.pickedFile)
+        runMyExeButton = findViewById(R.id.runMyExeButton)
 
         val p = DeviceProfiler.detect(this)
         findViewById<TextView>(R.id.deviceInfo).text = listOf(
@@ -208,20 +216,100 @@ class MainActivity : AppCompatActivity() {
             engineLog.text = "Graphics session stopped."
             refreshGraphicsStatus()
         }
+
+        // ---- Run the user's own program ----
+        runMyExeButton.setOnClickListener {
+            val src = pickedExeFile
+            val info = pickedExeInfo
+            if (src == null || info == null) {
+                engineLog.text = "Pick a .exe file first."
+                return@setOnClickListener
+            }
+            if (!EngineManager.isEngine2Installed(this)) {
+                engineLog.text =
+                    "The engine isn't ready yet: tap INSTALL ENGINE 2 below first, then DOWNLOAD + INSTALL WINE, then RUN MY .EXE again."
+                return@setOnClickListener
+            }
+            if (!EngineManager.isWineInstalled(this)) {
+                engineLog.text =
+                    "Wine isn't installed yet: tap DOWNLOAD + INSTALL WINE below first, then RUN MY .EXE again."
+                return@setOnClickListener
+            }
+            if (info.isGui) {
+                if (!EngineManager.isGraphicsInstalled(this)) {
+                    engineLog.text =
+                        "$pickedExeName is a windowed program — tap SETUP GRAPHICS once first, then RUN MY .EXE again."
+                    return@setOnClickListener
+                }
+                if (EngineManager.isGraphicsRunning()) {
+                    engineLog.text =
+                        "A graphics session is already running — tap STOP GRAPHICS first, then RUN MY .EXE again."
+                    return@setOnClickListener
+                }
+            }
+            runMyExeButton.isEnabled = false
+            engineLog.text = "Preparing $pickedExeName…"
+            Thread {
+                try {
+                    val guestPath = EngineManager.stageUserExe(this, src, pickedExeName)
+                    if (info.isGui) {
+                        runOnUiThread {
+                            engineLog.text = EngineManager.startGraphics(this, guestPath)
+                            refreshGraphicsStatus()
+                            runMyExeButton.isEnabled = true
+                        }
+                    } else {
+                        val result = EngineManager.runUserExeConsole(this, guestPath)
+                        runOnUiThread {
+                            engineLog.text =
+                                (if (result.success) "YOUR .EXE RAN ✅\n\n" else "YOUR .EXE FINISHED — see its exit line in the log\n\n") + result.log
+                            runMyExeButton.isEnabled = true
+                        }
+                    }
+                } catch (e: Exception) {
+                    runOnUiThread {
+                        engineLog.text = "Could not run $pickedExeName: ${e.message}"
+                        runMyExeButton.isEnabled = true
+                    }
+                }
+            }.start()
+        }
     }
 
     private fun showPickedFile(uri: Uri) {
-        val name = queryFileName(uri) ?: uri.lastPathSegment ?: "unknown file"
-        val result = try {
-            contentResolver.openInputStream(uri)?.use { ExeInspector.inspect(it) }
-        } catch (e: Exception) {
-            null
-        }
-        pickedFileText.text = if (result == null) {
-            "You picked: $name\n\nCouldn't open that file for inspection."
-        } else {
-            "You picked: $name\n\n${result.summary}\n${result.detail}"
-        }
+        val name = queryFileName(uri) ?: uri.lastPathSegment ?: "program.exe"
+        pickedExeName = name
+        pickedExeFile = null
+        pickedExeInfo = null
+        runMyExeButton.isEnabled = false
+        pickedFileText.text = "You picked: $name\n\nCopying it into the app…"
+        Thread {
+            try {
+                // A picked file can be large, and the engine can only
+                // read real files — copy the whole thing into app
+                // storage first, then inspect the copy.
+                val dir = java.io.File(filesDir, "picked").apply { mkdirs() }
+                val dest = java.io.File(dir, name.substringAfterLast('/').ifBlank { "program.exe" })
+                val input = contentResolver.openInputStream(uri)
+                    ?: throw IllegalStateException("couldn't open the picked file")
+                input.use { stream ->
+                    dest.outputStream().use { out -> stream.copyTo(out) }
+                }
+                val info = dest.inputStream().use { ExeInspector.inspect(it) }
+                pickedExeFile = dest
+                pickedExeInfo = info
+                runOnUiThread {
+                    pickedFileText.text =
+                        "You picked: $name\n\n${info.summary}\n${info.detail}"
+                    runMyExeButton.isEnabled = info.isWindowsExe && !info.isDll
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    pickedFileText.text =
+                        "You picked: $name\n\nCouldn't copy that file in: ${e.message}"
+                }
+            }
+        }.start()
     }
 
     private fun queryFileName(uri: Uri): String? {

@@ -345,6 +345,60 @@ object EngineManager {
     }
 
     // ------------------------------------------------------------------
+    // Run the user's own Windows programs (v0.19).
+    //
+    // A picked .exe is copied into the guest at /root/userapps/ and run
+    // through the same Box64 + Wine path as the built-in tests. The PE
+    // Subsystem field (read by ExeInspector) decides the route:
+    // windowed programs go through the graphics session below, console
+    // programs run in place and their output lands in the log.
+    // ------------------------------------------------------------------
+
+    /** Makes a file name safe as a guest path component (no spaces/quotes). */
+    private fun sanitizeExeName(name: String): String {
+        val cleaned = name.map { c ->
+            if (c.isLetterOrDigit() || c == '.' || c == '-' || c == '_') c else '_'
+        }.joinToString("")
+        return cleaned.ifBlank { "program.exe" }
+    }
+
+    /**
+     * Copies a picked Windows program from app storage into the Ubuntu
+     * guest and returns its guest path (/root/userapps/<name>).
+     */
+    fun stageUserExe(context: Context, source: File, displayName: String): String {
+        val dir = File(glibcRootfsDir(context), "root/userapps").apply { mkdirs() }
+        val dest = File(dir, sanitizeExeName(displayName))
+        source.copyTo(dest, overwrite = true)
+        return "/root/userapps/${dest.name}"
+    }
+
+    /**
+     * Runs a staged console program: boots the Wine prefix first (same
+     * staging that made the plink test diagnosable), then the program,
+     * keeping Wine's error channel audible and printing its exit code.
+     */
+    fun runUserExeConsole(context: Context, guestPath: String): TestResult {
+        val script = listOf(
+            "echo USER_EXE_START",
+            "box64 /opt/wine/bin/wine wineboot -i > /root/user-boot.log 2>&1",
+            "echo BOOT_EXIT=\$?",
+            "box64 /opt/wine/bin/wine $guestPath > /root/user-run.log 2>&1",
+            "echo USER_EXIT=\$?",
+            "cat /root/user-run.log",
+            "echo USER_EXE_DONE"
+        ).joinToString("; ")
+
+        val wineEnv = wineEnv() + ("WINEDEBUG" to "err")
+        val (_, log) = execInRootfs(context, glibcRootfsDir(context), script, 360, wineEnv)
+        val userExit = Regex("USER_EXIT=(\\d+)").find(log)?.groupValues?.get(1)
+        return TestResult(
+            success = log.contains("USER_EXE_DONE") && userExit == "0",
+            log = log.ifBlank { "[no output]" }
+        )
+    }
+
+    // ------------------------------------------------------------------
     // Graphics phase: an X server (Xvfb) + VNC inside the Ubuntu guest,
     // so windowed Windows programs have a screen to draw on, and the
     // app's built-in viewer (ScreenActivity) can show it.
@@ -432,20 +486,26 @@ object EngineManager {
      * as the first graphical test. The session lives until
      * [stopGraphics]; the viewer connects to it while it runs.
      */
-    fun startGraphics(context: Context): String {
+    fun startGraphics(context: Context, guestExePath: String = "/opt/tests/putty.exe"): String {
         if (isGraphicsRunning()) return "Graphics session is already running."
-        ensureGuestProgram(context, "putty.exe")
+        if (guestExePath == "/opt/tests/putty.exe") ensureGuestProgram(context, "putty.exe")
+        val programBase = guestExePath.substringAfterLast('/')
+        // Bracketed so the pkill pattern can't match this session's own
+        // command line (same trick as the Xvfb/x11vnc patterns below).
+        val programPattern =
+            if (programBase.isEmpty()) "[p]utty.exe"
+            else "[" + programBase.first() + "]" + programBase.drop(1)
         val script = listOf(
             "if [ ! -f /root/.fonts-done ]; then for d in /usr/share/fonts/X11/*/; do mkfontdir \"\$d\" > /dev/null 2>&1; done; touch /root/.fonts-done; fi",
             // Bracketed patterns: pkill -f must not match this script's
             // own command line (which contains the same words).
-            "pkill -f '[X]vfb' 2>/dev/null; pkill -f '[x]11vnc' 2>/dev/null; pkill -f '[p]utty.exe' 2>/dev/null; pkill -f '[w]ineserver' 2>/dev/null; sleep 1",
+            "pkill -f '[X]vfb' 2>/dev/null; pkill -f '[x]11vnc' 2>/dev/null; pkill -f '$programPattern' 2>/dev/null; pkill -f '[w]ineserver' 2>/dev/null; sleep 1",
             "rm -f /tmp/.X0-lock /tmp/.X11-unix/X0",
             "Xvfb :0 -screen 0 1024x600x24 > /root/x.log 2>&1 &",
             "sleep 2",
             "x11vnc -display :0 -rfbport 5900 -localhost -forever -shared -nopw > /root/vnc.log 2>&1 &",
             "sleep 1",
-            "box64 /opt/wine/bin/wine /opt/tests/putty.exe > /root/gui.log 2>&1 &",
+            "box64 /opt/wine/bin/wine $guestExePath > /root/gui.log 2>&1 &",
             "echo GRAPHICS_SESSION_UP",
             "wait"
         ).joinToString("; ")
@@ -461,7 +521,7 @@ object EngineManager {
                     }
                 } catch (e: Exception) { /* session ended */ }
             }.start()
-            "Graphics starting: X server + PuTTY. Give it ~20 seconds, then tap OPEN SCREEN."
+            "Graphics starting: X server + $programBase. Give it ~20 seconds, then tap OPEN SCREEN."
         } catch (e: Exception) {
             "Could not start graphics: ${e.message}"
         }

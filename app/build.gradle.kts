@@ -21,8 +21,8 @@ android {
         // no Play Store listing until a different runtime story exists;
         // distribution is sideload / direct APK.
         targetSdk = 28
-        versionCode = 18
-        versionName = "0.18"
+        versionCode = 19
+        versionName = "0.19"
 
         ndk {
             abiFilters += "arm64-v8a"
