@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- The Wine pack (and future engine packs) are downloaded on demand.
+         v0.9 shipped without this and the download died with
+         "Permission denied (missing INTERNET permission?)". -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:allowBackup="true"
         android:extractNativeLibs="true"
