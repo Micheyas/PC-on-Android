@@ -436,7 +436,7 @@ object EngineManager {
         if (isGraphicsRunning()) return "Graphics session is already running."
         ensureGuestProgram(context, "putty.exe")
         val script = listOf(
-            "if [ ! -f /root/.fonts-done ]; then for d in /usr/share/fonts/X11/*/; do mkfontdir \"$d\" > /dev/null 2>&1; done; touch /root/.fonts-done; fi",
+            "if [ ! -f /root/.fonts-done ]; then for d in /usr/share/fonts/X11/*/; do mkfontdir \"\$d\" > /dev/null 2>&1; done; touch /root/.fonts-done; fi",
             // Bracketed patterns: pkill -f must not match this script's
             // own command line (which contains the same words).
             "pkill -f '[X]vfb' 2>/dev/null; pkill -f '[x]11vnc' 2>/dev/null; pkill -f '[p]utty.exe' 2>/dev/null; pkill -f '[w]ineserver' 2>/dev/null; sleep 1",
