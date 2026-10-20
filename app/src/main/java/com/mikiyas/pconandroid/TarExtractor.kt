@@ -44,12 +44,17 @@ object TarExtractor {
 
             when (type) {
                 '5' -> { // directory
+                    // A leftover symlink at this path would swallow mkdirs()
+                    if (isSymlinkLexical(target)) deleteLexical(target)
                     target.mkdirs()
                     skipFully(stream, dataBlocks)
                 }
                 '2' -> { // symlink
                     target.parentFile?.mkdirs()
-                    if (target.exists() || isSymlink(target)) target.delete()
+                    // Rootfs links are often ABSOLUTE (e.g. bin/sh -> /bin/busybox),
+                    // so File.exists() is false for them on the host even when the
+                    // link is right there. Delete by lstat, not by exists().
+                    deleteLexical(target)
                     try { Os.symlink(linkName, target.absolutePath) } catch (e: Exception) { /* ignore */ }
                     skipFully(stream, dataBlocks)
                 }
@@ -57,7 +62,7 @@ object TarExtractor {
                     target.parentFile?.mkdirs()
                     val src = File(destDir, linkName.removePrefix("./"))
                     try {
-                        if (target.exists()) target.delete()
+                        deleteLexical(target)
                         Os.link(src.absolutePath, target.absolutePath)
                     } catch (e: Exception) {
                         try { Os.symlink("/" + linkName.removePrefix("./"), target.absolutePath) } catch (e2: Exception) { }
@@ -75,6 +80,12 @@ object TarExtractor {
                 }
                 else -> { // regular file ('0' or '\0')
                     target.parentFile?.mkdirs()
+                    // Never write THROUGH a leftover symlink: FileOutputStream
+                    // follows links, and an absolute rootfs link would point
+                    // outside the container. Remove links/dirs first.
+                    if (isSymlinkLexical(target) || (lexists(target) && target.isDirectory)) {
+                        deleteLexical(target)
+                    }
                     FileOutputStream(target).use { out ->
                         var remaining = size
                         val chunk = ByteArray(64 * 1024)
@@ -95,11 +106,27 @@ object TarExtractor {
         }
     }
 
-    private fun isSymlink(f: File): Boolean = try {
-        val canonical = f.canonicalPath
-        f.absolutePath != canonical
+    /** True if anything (file, dir, or link — broken or not) sits at this path. */
+    private fun lexists(f: File): Boolean = try {
+        Os.lstat(f.absolutePath)
+        true
     } catch (e: Exception) {
         false
+    }
+
+    private fun isSymlinkLexical(f: File): Boolean = try {
+        android.system.OsConstants.S_ISLNK(Os.lstat(f.absolutePath).st_mode)
+    } catch (e: Exception) {
+        false
+    }
+
+    /** Deletes the entry at this path without following symlinks. */
+    private fun deleteLexical(f: File) {
+        try {
+            if (lexists(f)) Os.remove(f.absolutePath)
+        } catch (e: Exception) {
+            try { f.delete() } catch (e2: Exception) { /* ignore */ }
+        }
     }
 
     private fun parseString(buf: ByteArray, offset: Int, length: Int): String {

@@ -1,6 +1,7 @@
 package com.mikiyas.pconandroid
 
 import android.content.Context
+import android.system.Os
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -20,8 +21,24 @@ object EngineManager {
     fun rootfsDir(context: Context): File =
         File(ContainerManager.containerDir(context), "runtime/rootfs")
 
-    fun isInstalled(context: Context): Boolean =
-        File(rootfsDir(context), "bin/sh").exists()
+    /**
+     * NOTE: bin/sh is an ABSOLUTE symlink to /bin/busybox. File.exists()
+     * follows it to the phone's real root, where /bin/busybox does not
+     * exist, so it always returned false even after a perfect extraction
+     * (that was the v0.4 "bin/sh is missing" bug). Inside PRoot the link
+     * resolves inside the rootfs and works. Check the link itself with
+     * lstat, plus the real busybox binary it points to.
+     */
+    fun isInstalled(context: Context): Boolean {
+        val rootfs = rootfsDir(context)
+        if (!File(rootfs, "bin/busybox").exists()) return false
+        return try {
+            Os.lstat(File(rootfs, "bin/sh").absolutePath)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
 
     /** Extracts the bundled Linux rootfs into the container. Returns a status line. */
     fun install(context: Context): String {
@@ -32,10 +49,13 @@ object EngineManager {
             context.assets.open("rootfs.tgz").use { input ->
                 TarExtractor.extractTarGz(input, rootfs)
             }
-            if (isInstalled(context)) {
-                "Engine installed: Linux rootfs ready at ${rootfs.path}"
-            } else {
-                "Extraction finished but /bin/sh is missing — the archive may be damaged."
+            when {
+                isInstalled(context) ->
+                    "Engine installed: Linux rootfs ready. Now tap RUN ENGINE TEST."
+                !File(rootfs, "bin/busybox").exists() ->
+                    "Extraction finished but bin/busybox is missing — the archive may be damaged."
+                else ->
+                    "Extraction finished but the bin/sh link is missing — please tap INSTALL ENGINE again."
             }
         } catch (e: Exception) {
             "Install failed: ${e.message}"

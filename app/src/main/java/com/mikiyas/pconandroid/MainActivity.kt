@@ -38,12 +38,16 @@ class MainActivity : AppCompatActivity() {
         }
 
         val containerReady = ContainerManager.ensureContainer(this)
-        findViewById<TextView>(R.id.engineStatus).text = listOf(
-            "Container: ${if (containerReady) "ready" else "could not be created"}",
-            "Engine base (PRoot + Linux): ${if (EngineManager.isInstalled(this)) "installed" else "not installed yet"}",
-            "Wine + Box64: arrives with the full engine rootfs",
-            "Free space: ${ContainerManager.freeSpaceMb(this)} MB"
-        ).joinToString("\n")
+
+        fun refreshEngineStatus() {
+            findViewById<TextView>(R.id.engineStatus).text = listOf(
+                "Container: ${if (containerReady) "ready" else "could not be created"}",
+                "Engine base (PRoot + Linux): ${if (EngineManager.isInstalled(this)) "installed" else "not installed yet"}",
+                "Wine + Box64: arrives with the full engine rootfs",
+                "Free space: ${ContainerManager.freeSpaceMb(this)} MB"
+            ).joinToString("\n")
+        }
+        refreshEngineStatus()
 
         val engineLog = findViewById<TextView>(R.id.engineLog)
         val installButton = findViewById<Button>(R.id.installEngineButton)
@@ -56,6 +60,7 @@ class MainActivity : AppCompatActivity() {
                 val status = EngineManager.install(this)
                 runOnUiThread {
                     engineLog.text = status
+                    refreshEngineStatus()
                     installButton.isEnabled = true
                 }
             }.start()
