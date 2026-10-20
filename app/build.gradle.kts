@@ -11,8 +11,20 @@ android {
         applicationId = "com.mikiyas.pconandroid"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "0.3"
+        versionCode = 4
+        versionName = "0.4"
+
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
+    }
+
+    packaging {
+        jniLibs {
+            // Engine binaries (proot & friends) must be extracted as real
+            // files into nativeLibraryDir so the app can execute them.
+            useLegacyPackaging = true
+        }
     }
 
     buildTypes {

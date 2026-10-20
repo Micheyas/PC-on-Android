@@ -75,5 +75,27 @@
             android:layout_marginTop="8dp"
             android:textSize="15sp" />
 
+        <Button
+            android:id="@+id/installEngineButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="INSTALL ENGINE" />
+
+        <Button
+            android:id="@+id/runEngineTestButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="RUN ENGINE TEST" />
+
+        <TextView
+            android:id="@+id/engineLog"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:fontFamily="monospace"
+            android:textSize="12sp" />
+
     </LinearLayout>
 </ScrollView>

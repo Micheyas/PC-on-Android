@@ -38,12 +38,41 @@ class MainActivity : AppCompatActivity() {
         }
 
         val containerReady = ContainerManager.ensureContainer(this)
-        val engineReady = ContainerManager.engineInstalled(this)
         findViewById<TextView>(R.id.engineStatus).text = listOf(
             "Container: ${if (containerReady) "ready" else "could not be created"}",
-            "Engine (Wine + Box64): ${if (engineReady) "installed" else "not bundled yet — arrives in the next build step"}",
+            "Engine base (PRoot + Linux): ${if (EngineManager.isInstalled(this)) "installed" else "not installed yet"}",
+            "Wine + Box64: arrives with the full engine rootfs",
             "Free space: ${ContainerManager.freeSpaceMb(this)} MB"
         ).joinToString("\n")
+
+        val engineLog = findViewById<TextView>(R.id.engineLog)
+        val installButton = findViewById<Button>(R.id.installEngineButton)
+        val testButton = findViewById<Button>(R.id.runEngineTestButton)
+
+        installButton.setOnClickListener {
+            installButton.isEnabled = false
+            engineLog.text = "Installing engine…"
+            Thread {
+                val status = EngineManager.install(this)
+                runOnUiThread {
+                    engineLog.text = status
+                    installButton.isEnabled = true
+                }
+            }.start()
+        }
+
+        testButton.setOnClickListener {
+            testButton.isEnabled = false
+            engineLog.text = "Running engine test…"
+            Thread {
+                val result = EngineManager.runTest(this)
+                runOnUiThread {
+                    engineLog.text =
+                        (if (result.success) "ENGINE TEST PASSED ✅\n\n" else "ENGINE TEST DID NOT PASS\n\n") + result.log
+                    testButton.isEnabled = true
+                }
+            }.start()
+        }
     }
 
     private fun showPickedFile(uri: Uri) {
