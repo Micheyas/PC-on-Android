@@ -78,6 +78,12 @@ object EngineManager {
             "echo ENGINE_TEST_DONE"
         ).joinToString("; ")
 
+        // v0.5's test PASSED but printed "uname/ls/grep/head: not found":
+        // PRoot inherits the Android host PATH, which has no /bin or
+        // /usr/bin in it, so the shell couldn't find any busybox applets.
+        // echo worked only because it's a shell builtin. Always hand the
+        // guest a proper Linux PATH.
+
         val command = listOf(
             "$nativeDir/libproot.so",
             "-r", rootfs.absolutePath,
@@ -98,6 +104,8 @@ object EngineManager {
                     environment()["LD_LIBRARY_PATH"] = nativeDir
                     environment()["HOME"] = "/root"
                     environment()["TERM"] = "xterm"
+                    environment()["PATH"] =
+                        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
                 }
                 .start()
 
@@ -117,8 +125,15 @@ object EngineManager {
             reader.join(3000)
             val exitCode = process.exitValue()
             val log = output.toString()
+            // A real pass means the busybox tools actually ran too:
+            // uname prints "Linux ..." and os-release says Alpine.
             TestResult(
-                success = exitCode == 0 && log.contains("ENGINE_TEST_OK") && log.contains("ENGINE_TEST_DONE"),
+                success = exitCode == 0 &&
+                    log.contains("ENGINE_TEST_OK") &&
+                    log.contains("ENGINE_TEST_DONE") &&
+                    log.contains("Linux") &&
+                    log.contains("Alpine") &&
+                    !log.contains("not found"),
                 log = log.ifBlank { "[no output — exit code $exitCode]" }
             )
         } catch (e: Exception) {
