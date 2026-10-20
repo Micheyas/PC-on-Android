@@ -3,6 +3,12 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// CI passes KEYSTORE_FILE pointing at a fixed signing keystore (stored as a
+// repo secret) so EVERY build carries the same signature. Without it, each
+// CI runner generated a fresh debug key and Android refused to install the
+// new build over the old one ("package appears to be invalid").
+val ciKeystorePath = System.getenv("KEYSTORE_FILE")
+
 android {
     namespace = "com.mikiyas.pconandroid"
     compileSdk = 34
@@ -21,8 +27,8 @@ android {
         // no Play Store listing until a different runtime story exists;
         // distribution is sideload / direct APK.
         targetSdk = 28
-        versionCode = 20
-        versionName = "0.20"
+        versionCode = 21
+        versionName = "0.21"
 
         ndk {
             abiFilters += "arm64-v8a"
@@ -37,7 +43,23 @@ android {
         }
     }
 
+    signingConfigs {
+        if (ciKeystorePath != null) {
+            create("ciFixed") {
+                storeFile = file(ciKeystorePath)
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            if (ciKeystorePath != null) {
+                signingConfig = signingConfigs.getByName("ciFixed")
+            }
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
