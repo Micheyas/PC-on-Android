@@ -164,6 +164,48 @@ class MainActivity : AppCompatActivity() {
                 }
             }.start()
         }
+
+        // ---- Graphics section ----
+        fun refreshGraphicsStatus() {
+            findViewById<TextView>(R.id.graphicsStatus).text = listOf(
+                "X server + VNC: ${if (EngineManager.isGraphicsInstalled(this)) "installed" else "not installed yet"}",
+                "Session: ${if (EngineManager.isGraphicsRunning()) "RUNNING" else "stopped"}"
+            ).joinToString("\n")
+        }
+        refreshGraphicsStatus()
+
+        val setupGraphicsButton = findViewById<Button>(R.id.setupGraphicsButton)
+        val runGuiButton = findViewById<Button>(R.id.runGuiButton)
+        val openScreenButton = findViewById<Button>(R.id.openScreenButton)
+        val stopGraphicsButton = findViewById<Button>(R.id.stopGraphicsButton)
+
+        setupGraphicsButton.setOnClickListener {
+            setupGraphicsButton.isEnabled = false
+            engineLog.text = "Setting up graphics inside the engine (Ubuntu downloads Xvfb + x11vnc) — give it a few minutes…"
+            Thread {
+                val status = EngineManager.installGraphics(this)
+                runOnUiThread {
+                    engineLog.text = status
+                    refreshGraphicsStatus()
+                    setupGraphicsButton.isEnabled = true
+                }
+            }.start()
+        }
+
+        runGuiButton.setOnClickListener {
+            engineLog.text = EngineManager.startGraphics(this)
+            refreshGraphicsStatus()
+        }
+
+        openScreenButton.setOnClickListener {
+            startActivity(android.content.Intent(this, ScreenActivity::class.java))
+        }
+
+        stopGraphicsButton.setOnClickListener {
+            EngineManager.stopGraphics()
+            engineLog.text = "Graphics session stopped."
+            refreshGraphicsStatus()
+        }
     }
 
     private fun showPickedFile(uri: Uri) {

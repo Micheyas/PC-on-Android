@@ -15,3 +15,4 @@
 # Wine pack build output/cache (built by scripts/make-wine-pack.sh)
 /dist/
 /app/src/main/assets/plink.exe
+/app/src/main/assets/putty.exe

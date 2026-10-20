@@ -344,14 +344,120 @@ object EngineManager {
         }
     }
 
-    /** Runs /bin/sh -c [script] inside [rootfs] through PRoot. Returns (exitCode, combinedOutput). */
-    private fun execInRootfs(
+    // ------------------------------------------------------------------
+    // Graphics phase: an X server (Xvfb) + VNC inside the Ubuntu guest,
+    // so windowed Windows programs have a screen to draw on, and the
+    // app's built-in viewer (ScreenActivity) can show it.
+    // ------------------------------------------------------------------
+
+    fun isGraphicsInstalled(context: Context): Boolean {
+        if (!isGlibcInstalled(context)) return false
+        val rootfs = glibcRootfsDir(context)
+        fun exists(path: String) = try {
+            android.system.Os.lstat(File(rootfs, path).absolutePath); true
+        } catch (e: Exception) { false }
+        return exists("usr/bin/Xvfb") && exists("usr/bin/x11vnc")
+    }
+
+    /**
+     * Installs the X server + VNC server into the Ubuntu guest with apt
+     * (the guest shares the phone's network). One-time, a few minutes.
+     */
+    fun installGraphics(context: Context): String {
+        val script = listOf(
+            "rm -f /etc/resolv.conf",
+            "printf 'nameserver 8.8.8.8\\nnameserver 1.1.1.1\\n' > /etc/resolv.conf",
+            "export DEBIAN_FRONTEND=noninteractive",
+            "apt-get update -y > /root/apt.log 2>&1",
+            "echo APT_UPDATE_EXIT=\$?",
+            "apt-get install -y xvfb x11vnc >> /root/apt.log 2>&1",
+            "echo APT_INSTALL_EXIT=\$?",
+            "tail -n 20 /root/apt.log"
+        ).joinToString("; ")
+        val (_, log) = execInRootfs(context, glibcRootfsDir(context), script, 900)
+        return if (isGraphicsInstalled(context)) {
+            "Graphics installed: X server + VNC are ready in the engine.\n\n$log"
+        } else {
+            "Graphics install did not finish — the log tail says why:\n\n$log"
+        }
+    }
+
+    private var graphicsProcess: Process? = null
+    private val graphicsLog = StringBuilder()
+
+    fun isGraphicsRunning(): Boolean = try {
+        graphicsProcess?.isAlive == true
+    } catch (e: Exception) { false }
+
+    fun graphicsSessionLog(): String =
+        synchronized(graphicsLog) { graphicsLog.toString() }
+
+    /** Copies a bundled test program (asset) into the guest, if missing. */
+    private fun ensureGuestProgram(context: Context, assetName: String): File {
+        val dest = File(glibcRootfsDir(context), "opt/tests/$assetName")
+        if (!dest.exists()) {
+            dest.parentFile?.mkdirs()
+            context.assets.open(assetName).use { input ->
+                dest.outputStream().use { out -> input.copyTo(out) }
+            }
+        }
+        return dest
+    }
+
+    /**
+     * Starts the graphics session and keeps it running: Xvfb on :0,
+     * x11vnc on localhost:5900, and PuTTY (a windowed Windows program)
+     * as the first graphical test. The session lives until
+     * [stopGraphics]; the viewer connects to it while it runs.
+     */
+    fun startGraphics(context: Context): String {
+        if (isGraphicsRunning()) return "Graphics session is already running."
+        ensureGuestProgram(context, "putty.exe")
+        val script = listOf(
+            // Bracketed patterns: pkill -f must not match this script's
+            // own command line (which contains the same words).
+            "pkill -f '[X]vfb' 2>/dev/null; pkill -f '[x]11vnc' 2>/dev/null; pkill -f '[p]utty.exe' 2>/dev/null; pkill -f '[w]ineserver' 2>/dev/null; sleep 1",
+            "rm -f /tmp/.X0-lock /tmp/.X11-unix/X0",
+            "Xvfb :0 -screen 0 1024x600x24 > /root/x.log 2>&1 &",
+            "sleep 2",
+            "x11vnc -display :0 -rfbport 5900 -localhost -forever -shared -nopw > /root/vnc.log 2>&1 &",
+            "sleep 1",
+            "box64 /opt/wine/bin/wine /opt/tests/putty.exe > /root/gui.log 2>&1 &",
+            "echo GRAPHICS_SESSION_UP",
+            "wait"
+        ).joinToString("; ")
+        val env = wineEnv() + mapOf("WINEDEBUG" to "err", "DISPLAY" to ":0")
+        return try {
+            val process = startInRootfs(context, glibcRootfsDir(context), script, env)
+            graphicsProcess = process
+            synchronized(graphicsLog) { graphicsLog.setLength(0) }
+            Thread {
+                try {
+                    process.inputStream.bufferedReader().forEachLine { line ->
+                        synchronized(graphicsLog) { graphicsLog.append(line).append('\n') }
+                    }
+                } catch (e: Exception) { /* session ended */ }
+            }.start()
+            "Graphics starting: X server + PuTTY. Give it ~20 seconds, then tap OPEN SCREEN."
+        } catch (e: Exception) {
+            "Could not start graphics: ${e.message}"
+        }
+    }
+
+    fun stopGraphics() {
+        try {
+            graphicsProcess?.destroy()
+        } catch (e: Exception) { /* already gone */ }
+        graphicsProcess = null
+    }
+
+    /** Starts /bin/sh -c [script] inside [rootfs] through PRoot and returns the live process. */
+    private fun startInRootfs(
         context: Context,
         rootfs: File,
         script: String,
-        timeoutSeconds: Long,
         extraEnv: Map<String, String> = emptyMap()
-    ): Pair<Int?, String> {
+    ): Process {
         val nativeDir = context.applicationInfo.nativeLibraryDir
         val tmpDir = File(ContainerManager.containerDir(context), "runtime/tmp").apply { mkdirs() }
 
@@ -366,20 +472,31 @@ object EngineManager {
             "/bin/sh", "-c", script
         )
 
+        return ProcessBuilder(command)
+            .redirectErrorStream(true)
+            .apply {
+                environment()["PROOT_TMP_DIR"] = tmpDir.absolutePath
+                environment()["PROOT_LOADER"] = "$nativeDir/libproot-loader.so"
+                environment()["LD_LIBRARY_PATH"] = nativeDir
+                environment()["HOME"] = "/root"
+                environment()["TERM"] = "xterm"
+                environment()["PATH"] =
+                    "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+                extraEnv.forEach { (k, v) -> environment()[k] = v }
+            }
+            .start()
+    }
+
+    /** Runs /bin/sh -c [script] inside [rootfs] through PRoot. Returns (exitCode, combinedOutput). */
+    private fun execInRootfs(
+        context: Context,
+        rootfs: File,
+        script: String,
+        timeoutSeconds: Long,
+        extraEnv: Map<String, String> = emptyMap()
+    ): Pair<Int?, String> {
         return try {
-            val process = ProcessBuilder(command)
-                .redirectErrorStream(true)
-                .apply {
-                    environment()["PROOT_TMP_DIR"] = tmpDir.absolutePath
-                    environment()["PROOT_LOADER"] = "$nativeDir/libproot-loader.so"
-                    environment()["LD_LIBRARY_PATH"] = nativeDir
-                    environment()["HOME"] = "/root"
-                    environment()["TERM"] = "xterm"
-                    environment()["PATH"] =
-                        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-                    extraEnv.forEach { (k, v) -> environment()[k] = v }
-                }
-                .start()
+            val process = startInRootfs(context, rootfs, script, extraEnv)
 
             val output = StringBuilder()
             val reader = Thread {

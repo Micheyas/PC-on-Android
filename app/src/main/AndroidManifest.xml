@@ -13,6 +13,10 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.PCOnAndroid">
         <activity
+            android:name=".ScreenActivity"
+            android:exported="false"
+            android:label="Windows screen" />
+        <activity
             android:name=".MainActivity"
             android:exported="true">
             <intent-filter>

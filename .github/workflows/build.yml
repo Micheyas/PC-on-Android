@@ -24,13 +24,17 @@ jobs:
       - name: Fetch engine 2 assets (Ubuntu rootfs + Box64)
         run: bash scripts/fetch-engine2.sh
 
-      - name: Fetch test program (plink.exe, PuTTY console client)
+      - name: Fetch test programs (plink.exe console + putty.exe windowed)
         run: |
           for i in 1 2 3 4 5; do
             curl -fL -o app/src/main/assets/plink.exe https://the.earth.li/~sgtatham/putty/latest/w64/plink.exe && break
             sleep 3
           done
-          ls -lh app/src/main/assets/plink.exe
+          for i in 1 2 3 4 5; do
+            curl -fL -o app/src/main/assets/putty.exe https://the.earth.li/~sgtatham/putty/latest/w64/putty.exe && break
+            sleep 3
+          done
+          ls -lh app/src/main/assets/plink.exe app/src/main/assets/putty.exe
 
       - name: Build debug APK
         run: ./gradlew assembleDebug

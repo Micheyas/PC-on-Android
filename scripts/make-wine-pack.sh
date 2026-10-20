@@ -37,6 +37,33 @@ LIBC_DEB="$POOL/main/g/glibc/libc6_2.39-0ubuntu8.9_amd64.deb"
 LIBGCC_DEB="$POOL/main/g/gcc-14/libgcc-s1_14.2.0-4ubuntu2~24.04.1_amd64.deb"
 LIBSTDCXX_DEB="$POOL/main/g/gcc-14/libstdc++6_14.2.0-4ubuntu2~24.04.1_amd64.deb"
 ZLIB_DEB="$POOL/main/z/zlib/zlib1g_1.3.dfsg-3.1ubuntu2.2_amd64.deb"
+# X11 + font libraries Wine's graphical side needs inside Box64
+# (winex11.drv, FreeType/Fontconfig for text). Filenames resolved from
+# the noble main Packages index 2026-10-20.
+X_DEBS="
+$POOL/main/libx/libx11/libx11-6_1.8.7-1build1_amd64.deb
+$POOL/main/libx/libxcb/libxcb1_1.15-1ubuntu2_amd64.deb
+$POOL/main/libx/libxau/libxau6_1.0.9-1build6_amd64.deb
+$POOL/main/libx/libxdmcp/libxdmcp6_1.1.3-0ubuntu6_amd64.deb
+$POOL/main/libb/libbsd/libbsd0_0.12.1-1build1_amd64.deb
+$POOL/main/libm/libmd/libmd0_1.1.0-2build1_amd64.deb
+$POOL/main/libx/libxext/libxext6_1.3.4-1build2_amd64.deb
+$POOL/main/libx/libxrender/libxrender1_0.9.10-1.1build1_amd64.deb
+$POOL/main/libx/libxrandr/libxrandr2_1.5.2-2build1_amd64.deb
+$POOL/main/libx/libxfixes/libxfixes3_6.0.0-2build1_amd64.deb
+$POOL/main/libx/libxcursor/libxcursor1_1.2.1-1build1_amd64.deb
+$POOL/main/libx/libxi/libxi6_1.8.1-1build1_amd64.deb
+$POOL/main/libx/libxinerama/libxinerama1_1.1.4-3build1_amd64.deb
+$POOL/main/libx/libxxf86vm/libxxf86vm1_1.1.4-1build4_amd64.deb
+$POOL/main/libx/libxcomposite/libxcomposite1_0.4.5-1build3_amd64.deb
+$POOL/main/libx/libxdamage/libxdamage1_1.1.6-1build1_amd64.deb
+$POOL/main/f/freetype/libfreetype6_2.13.2+dfsg-1build3_amd64.deb
+$POOL/main/f/fontconfig/libfontconfig1_2.15.0-1.1ubuntu2_amd64.deb
+$POOL/main/libp/libpng1.6/libpng16-16t64_1.6.43-5build1_amd64.deb
+$POOL/main/b/brotli/libbrotli1_1.1.0-2build2_amd64.deb
+$POOL/main/e/expat/libexpat1_2.6.1-2build1_amd64.deb
+$POOL/main/libx/libxkbcommon/libxkbcommon0_1.6.0-1build1_amd64.deb
+"
 
 download() {
   local url="$1" dest="$2" attempt
@@ -72,7 +99,7 @@ tar --no-same-owner -xzf "$WORK/bundle.tar.gz" -C "$WORK/bundle"
 cp -a --no-preserve=ownership "$WORK/bundle/usr/lib/box64-x86_64-linux-gnu" "$PACK/usr/lib/"
 
 echo "Downloading x86_64 system libraries (amd64 .debs)…"
-for deb_url in "$LIBC_DEB" "$LIBGCC_DEB" "$LIBSTDCXX_DEB" "$ZLIB_DEB"; do
+for deb_url in "$LIBC_DEB" "$LIBGCC_DEB" "$LIBSTDCXX_DEB" "$ZLIB_DEB" $X_DEBS; do
   f="$WORK/$(basename "$deb_url")"
   download "$deb_url" "$f"
   mkdir -p "$WORK/debx"
