@@ -68,7 +68,7 @@ class MainActivity : AppCompatActivity() {
 
         fun refreshWineStatus() {
             findViewById<TextView>(R.id.wineStatus).text =
-                "Wine 11.20: ${if (EngineManager.isWineInstalled(this)) "installed" else "not installed yet (one-time download)"}"
+                "Wine: ${if (EngineManager.isWineInstalled(this)) "installed" else "not installed yet (one-time download)"}"
         }
         refreshWineStatus()
 

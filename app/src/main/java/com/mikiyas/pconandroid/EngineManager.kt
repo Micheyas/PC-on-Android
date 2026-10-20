@@ -174,16 +174,16 @@ object EngineManager {
     // Engine layer 3: Wine (downloadable pack).
     //
     // The pack (~199 MB) is built by scripts/make-wine-pack.sh and
-    // published on this repo's "wine-pack-11.20" release. The app
+    // published on this repo's "wine-pack-10.0" release. The app
     // downloads it once and extracts it into the Ubuntu rootfs:
-    //   opt/wine/          Wine 11.20 amd64-wow64 (Kron4ek build)
+    //   opt/wine/          Wine 10.0 amd64-wow64 (Kron4ek build)
     //   usr/lib/x86_64-linux-gnu/ + lib64/   x86_64 glibc & friends
     //   usr/lib/box64-x86_64-linux-gnu/      Box64's bundled x86 libs
     // Windows programs then run as: box64 /opt/wine/bin/wine <exe>
     // ------------------------------------------------------------------
 
     const val WINE_PACK_URL =
-        "https://github.com/Micheyas/PC-on-Android/releases/download/wine-pack-11.20/wine-pack.tgz"
+        "https://github.com/Micheyas/PC-on-Android/releases/download/wine-pack-10.0/wine-pack.tgz"
 
     fun isWineInstalled(context: Context): Boolean =
         File(glibcRootfsDir(context), "opt/wine/bin/wine").exists()
@@ -202,19 +202,28 @@ object EngineManager {
         return try {
             if (!pack.exists() || pack.length() == 0L) {
                 pack.parentFile?.mkdirs()
-                onProgress("Downloading Wine pack (about 199 MB)…")
+                onProgress("Downloading Wine pack (about 148 MB)…")
                 downloadFile(WINE_PACK_URL, pack) { mb ->
                     onProgress("Downloading Wine pack… $mb MB")
                 }
             }
             onProgress("Download complete. Installing Wine into the engine…")
-            glibcRootfsDir(context).mkdirs()
+            val rootfsDir = glibcRootfsDir(context)
+            rootfsDir.mkdirs()
+            // A previous pack (or an aborted run) must never mix with
+            // this one: wipe the old Wine tree, its libraries and the
+            // old Wine prefix before extracting.
+            File(rootfsDir, "opt/wine").deleteRecursively()
+            File(rootfsDir, "usr/lib/box64-x86_64-linux-gnu").deleteRecursively()
+            File(rootfsDir, "usr/lib/x86_64-linux-gnu").deleteRecursively()
+            File(rootfsDir, "lib64").deleteRecursively()
+            File(rootfsDir, "root/.wine").deleteRecursively()
             pack.inputStream().use { input ->
                 TarExtractor.extractTarGz(input, glibcRootfsDir(context))
             }
             if (isWineInstalled(context)) {
                 pack.delete()
-                "Wine installed: Wine 11.20 ready. Now tap RUN WINE TEST."
+                "Wine installed: ready. Now tap RUN WINE TEST."
             } else {
                 "Wine pack extracted but opt/wine/bin/wine is missing — the pack may be damaged."
             }
@@ -284,7 +293,7 @@ object EngineManager {
             success = exitCode == 0 &&
                 log.contains("WINE_TEST_OK") &&
                 log.contains("WINE_TEST_DONE") &&
-                log.contains("wine-11"),
+                log.contains("wine-"),
             log = log.ifBlank { "[no output — exit code $exitCode]" }
         )
     }

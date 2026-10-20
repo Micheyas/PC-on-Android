@@ -3,7 +3,7 @@
 # fetches on demand (kept OUT of the APK so the APK stays small).
 #
 # Pack contents (paths are relative to the Ubuntu rootfs root):
-#   opt/wine/                          Kron4ek Wine 11.20 amd64-wow64
+#   opt/wine/                          Kron4ek Wine amd64-wow64 ($WINE_VERSION)
 #   usr/lib/box64-x86_64-linux-gnu/    Box64's bundled x86_64 libraries
 #   usr/lib/x86_64-linux-gnu/          x86_64 glibc, libgcc, libstdc++,
 #                                      zlib (Ubuntu noble amd64 .debs)
@@ -21,10 +21,16 @@ WORK="$(mktemp -d "$PWD/dist/work.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 # Optional local cache: point WINE_TARBALL / BUNDLE_TARBALL at
 # pre-downloaded files to skip the big downloads while developing.
-CACHE_WINE="${WINE_TARBALL:-dist/cache/wine.tar.xz}"
+CACHE_WINE="${WINE_TARBALL:-dist/cache/wine-${WINE_VERSION:-10.0}.tar.xz}"
 CACHE_BUNDLE="${BUNDLE_TARBALL:-dist/cache/bundle.tar.gz}"
 
-WINE_URL="https://github.com/Kron4ek/Wine-Builds/releases/download/11.20/wine-11.20-amd64-wow64.tar.xz"
+# Wine version to pack. 11.20's ntdll aborts under Box64+PRoot with
+# "set_mem_area_state: Assertion '!(size & granularity_mask)' failed"
+# during the first real program run (seen on-device 2026-10-20), so
+# the pack defaults to the 10.0 generation the Android Wine scene
+# (Winlator / MiceWine) standardized on.
+WINE_VERSION="${WINE_VERSION:-10.0}"
+WINE_URL="https://github.com/Kron4ek/Wine-Builds/releases/download/${WINE_VERSION}/wine-${WINE_VERSION}-amd64-wow64.tar.xz"
 BUNDLE_URL="https://github.com/ptitSeb/box64/releases/download/v0.3.8/box64-bundle-x86-libs-0.38.0.tar.gz"
 POOL="https://archive.ubuntu.com/ubuntu/pool"
 LIBC_DEB="$POOL/main/g/glibc/libc6_2.39-0ubuntu8.9_amd64.deb"
@@ -49,7 +55,7 @@ download() {
 PACK="$WORK/pack"
 mkdir -p "$PACK/opt" "$PACK/usr/lib" "$PACK/lib64"
 
-echo "Getting Wine 11.20 (amd64 wow64)…"
+echo "Getting Wine ${WINE_VERSION} (amd64 wow64)…"
 if [ -s "$CACHE_WINE" ]; then cp "$CACHE_WINE" "$WORK/wine.tar.xz"; else download "$WINE_URL" "$WORK/wine.tar.xz"; fi
 tar --no-same-owner -xJf "$WORK/wine.tar.xz" -C "$WORK"
 WINE_SRC="$(find "$WORK" -maxdepth 3 -type f -path "*/bin/wine" | head -1 | xargs dirname | xargs dirname)"

@@ -1,6 +1,6 @@
 name: Build Wine pack
 
-# Manually triggered: builds dist/wine-pack.tgz (Wine 11.20 wow64 +
+# Manually triggered: builds dist/wine-pack.tgz (Wine 10.0 wow64 +
 # x86_64 system libraries for Box64) and publishes it as a release
 # asset. The app downloads this pack on demand — it is NOT in the APK.
 on:
@@ -19,10 +19,10 @@ jobs:
       - name: Build the Wine pack
         run: bash scripts/make-wine-pack.sh
 
-      - name: Publish pack to "wine-pack-11.20" release
+      - name: Publish pack to "wine-pack-10.0" release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: wine-pack-11.20
-          name: Wine pack 11.20 (engine download)
+          tag_name: wine-pack-10.0
+          name: Wine pack 10.0 (engine download)
           prerelease: true
           files: dist/wine-pack.tgz

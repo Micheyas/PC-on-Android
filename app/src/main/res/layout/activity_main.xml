@@ -138,7 +138,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="DOWNLOAD + INSTALL WINE (~199 MB)" />
+            android:text="DOWNLOAD + INSTALL WINE (~148 MB)" />
 
         <Button
             android:id="@+id/runWineTestButton"

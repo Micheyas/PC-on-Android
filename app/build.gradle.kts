@@ -11,8 +11,8 @@ android {
         applicationId = "com.mikiyas.pconandroid"
         minSdk = 26
         targetSdk = 34
-        versionCode = 11
-        versionName = "0.11"
+        versionCode = 12
+        versionName = "0.12"
 
         ndk {
             abiFilters += "arm64-v8a"
