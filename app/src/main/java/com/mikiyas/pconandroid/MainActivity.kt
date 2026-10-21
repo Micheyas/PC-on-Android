@@ -217,6 +217,20 @@ class MainActivity : AppCompatActivity() {
             refreshGraphicsStatus()
         }
 
+        val diagnoseGraphicsButton = findViewById<Button>(R.id.diagnoseGraphicsButton)
+        diagnoseGraphicsButton.setOnClickListener {
+            diagnoseGraphicsButton.isEnabled = false
+            engineLog.text = "Running graphics diagnostics…"
+            Thread {
+                val report = EngineManager.graphicsDiagnostics(this)
+                runOnUiThread {
+                    engineLog.text = report
+                    refreshGraphicsStatus()
+                    diagnoseGraphicsButton.isEnabled = true
+                }
+            }.start()
+        }
+
         // ---- Run the user's own program ----
         runMyExeButton.setOnClickListener {
             val src = pickedExeFile

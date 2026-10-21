@@ -534,6 +534,33 @@ object EngineManager {
         graphicsProcess = null
     }
 
+    /**
+     * One-shot guest probe for when OPEN SCREEN gets "connection refused":
+     * shows whether Xvfb / x11vnc / wine are actually alive, whether
+     * anything listens on port 5900 (0x170C in /proc/net/tcp), and the
+     * tails of the three server logs the session script writes.
+     */
+    fun graphicsDiagnostics(context: Context): String {
+        val script = listOf(
+            "echo '== processes =='",
+            "ps -ef 2>/dev/null | grep -E '[X]vfb|[x]11vnc|[w]ine|[b]ox64' || echo '(ps found none)'",
+            "echo '== X socket =='",
+            "ls -la /tmp/.X11-unix/ 2>&1",
+            "echo '== port 5900 =='",
+            "grep -i ':170C' /proc/net/tcp /proc/net/tcp6 2>/dev/null || echo 'NOTHING listening on 5900'",
+            "echo '== binaries =='",
+            "ls -l /usr/bin/Xvfb /usr/bin/x11vnc 2>&1",
+            "echo '== x.log (Xvfb) =='",
+            "tail -n 30 /root/x.log 2>&1",
+            "echo '== vnc.log (x11vnc) =='",
+            "tail -n 40 /root/vnc.log 2>&1",
+            "echo '== gui.log (wine program) =='",
+            "tail -n 20 /root/gui.log 2>&1"
+        ).joinToString("; ")
+        val (_, output) = execInRootfs(context, glibcRootfsDir(context), script, 30)
+        return output.trim()
+    }
+
     /** Starts /bin/sh -c [script] inside [rootfs] through PRoot and returns the live process. */
     private fun startInRootfs(
         context: Context,

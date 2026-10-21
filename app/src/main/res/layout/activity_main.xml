@@ -205,6 +205,13 @@
             android:layout_marginTop="8dp"
             android:text="STOP GRAPHICS" />
 
+        <Button
+            android:id="@+id/diagnoseGraphicsButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="DIAGNOSE GRAPHICS" />
+
         <TextView
             android:id="@+id/engineLog"
             android:layout_width="match_parent"
