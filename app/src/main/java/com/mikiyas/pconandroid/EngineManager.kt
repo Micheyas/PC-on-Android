@@ -520,6 +520,16 @@ object EngineManager {
             "true"
         ).joinToString("; ")
         execInRootfs(context, glibcRootfsDir(context), cleanup, 20)
+        // NEWLINE-joined, never "; "-joined: three lines end with the
+        // background operator &, and "&;" is a syntax error in POSIX
+        // sh — dash parses the whole -c string before running any of
+        // it, so the session died at parse time with
+        // 'Syntax error: ";" unexpected' and not even session.log was
+        // created (on-device 2026-10-21, v0.25 DIAGNOSE output; the
+        // exact string reproduced against dash locally). This bug was
+        // latent since the graphics phase began — the session script
+        // never once parsed. A newline terminates a backgrounded
+        // command just as legally as it terminates a foreground one.
         val script = listOf(
             // Trace everything the session shell does into a file the
             // DIAGNOSE button can read back. Until v0.25 a session that
@@ -536,7 +546,7 @@ object EngineManager {
             "box64 /opt/wine/bin/wine $guestExePath > /root/gui.log 2>&1 &",
             "echo GRAPHICS_SESSION_UP",
             "wait"
-        ).joinToString("; ")
+        ).joinToString("\n")
         val env = wineEnv() + mapOf("WINEDEBUG" to "err", "DISPLAY" to ":0")
         return try {
             val process = startInRootfs(context, glibcRootfsDir(context), script, env)
