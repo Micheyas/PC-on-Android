@@ -10,7 +10,9 @@
 # Pack paths are relative to the Ubuntu rootfs root (usr/bin/Xvfb,
 # usr/bin/x11vnc, usr/lib/aarch64-linux-gnu/..., usr/share/...).
 # Output: dist/graphics-pack.tgz — published on the
-# "graphics-pack-1" release; the app downloads it on demand.
+# "graphics-pack-2" release; the app downloads it on demand.
+# (graphics-pack-1 was retired: it carried a real ./lib directory that
+# broke the rootfs merged-usr lib symlink on extraction.)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -144,6 +146,22 @@ for path in "${DEBS[@]}"; do
     (cd "$PACK" && ar x "$f" && tar --no-same-owner -xf data.tar.* && rm -f data.tar.* debian-binary control.tar.*)
   fi
   rm -f "$f"
+done
+
+# Merged-usr normalization: some debs (e.g. liblzo2-2) ship files under
+# /lib instead of /usr/lib. The target rootfs is merged-usr — its lib is
+# a SYMLINK to usr/lib — so a pack carrying a real ./lib directory makes
+# the extractor replace that symlink with a plain directory, orphaning
+# /lib/ld-linux-aarch64.so.1 and killing every dynamic binary in the
+# guest (seen on-device 2026-10-21). Fold any top-level lib/bin/sbin
+# content into usr/ so the pack never carries those directories.
+for d in lib bin sbin; do
+  if [ -d "$PACK/$d" ] && [ ! -L "$PACK/$d" ]; then
+    mkdir -p "$PACK/usr/$d"
+    cp -a "$PACK/$d/." "$PACK/usr/$d/"
+    rm -rf "$PACK/$d"
+    echo "merged-usr: folded ./$d into ./usr/$d"
+  fi
 done
 
 echo "Pack contents (key files):"

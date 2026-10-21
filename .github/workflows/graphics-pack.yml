@@ -20,10 +20,10 @@ jobs:
       - name: Build the Graphics pack
         run: bash scripts/make-graphics-pack.sh
 
-      - name: Publish pack to "graphics-pack-1" release
+      - name: Publish pack to "graphics-pack-2" release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: graphics-pack-1
-          name: Graphics pack 1 (X server download)
+          tag_name: graphics-pack-2
+          name: Graphics pack 2 (X server download, merged-usr safe)
           prerelease: true
           files: dist/graphics-pack.tgz

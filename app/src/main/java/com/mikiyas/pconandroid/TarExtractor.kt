@@ -44,8 +44,16 @@ object TarExtractor {
 
             when (type) {
                 '5' -> { // directory
-                    // A leftover symlink at this path would swallow mkdirs()
-                    if (isSymlinkLexical(target)) deleteLexical(target)
+                    // A symlink-to-directory at this path must SURVIVE —
+                    // mkdirs() works through it. Merged-usr rootfses ship
+                    // lib -> usr/lib and bin -> usr/bin as symlinks; the
+                    // graphics pack carries a real ./lib directory entry,
+                    // and deleting the link to mkdir a real dir orphaned
+                    // /lib/ld-linux-aarch64.so.1, so every dynamic binary
+                    // in the guest failed to exec (PRoot: execve
+                    // "/usr/bin/sh": No such file or directory, on-device
+                    // 2026-10-21). Only non-directory links get replaced.
+                    if (isSymlinkLexical(target) && !target.isDirectory) deleteLexical(target)
                     target.mkdirs()
                     skipFully(stream, dataBlocks)
                 }
@@ -123,10 +131,24 @@ object TarExtractor {
         false
     }
 
-    /** Deletes the entry at this path without following symlinks. */
+    /**
+     * Deletes the entry at this path without following symlinks. A real
+     * directory is emptied recursively first (Os.remove refuses non-empty
+     * dirs) — needed when a symlink entry (e.g. lib -> usr/lib from the
+     * rootfs archive) must replace a real directory left behind by a bad
+     * earlier extraction. Children are classified by lstat, so a link
+     * inside is removed as a link, never followed out of the container.
+     */
     private fun deleteLexical(f: File) {
         try {
-            if (lexists(f)) Os.remove(f.absolutePath)
+            if (!lexists(f)) return
+            val st = Os.lstat(f.absolutePath)
+            if (android.system.OsConstants.S_ISDIR(st.st_mode) &&
+                !android.system.OsConstants.S_ISLNK(st.st_mode)
+            ) {
+                f.listFiles()?.forEach { deleteLexical(it) }
+            }
+            Os.remove(f.absolutePath)
         } catch (e: Exception) {
             try { f.delete() } catch (e2: Exception) { /* ignore */ }
         }

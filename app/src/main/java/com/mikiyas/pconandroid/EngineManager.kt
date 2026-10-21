@@ -418,10 +418,10 @@ object EngineManager {
      * (the guest shares the phone's network). One-time, a few minutes.
      */
     const val GRAPHICS_PACK_URL =
-        "https://github.com/Micheyas/PC-on-Android/releases/download/graphics-pack-1/graphics-pack.tgz"
+        "https://github.com/Micheyas/PC-on-Android/releases/download/graphics-pack-2/graphics-pack.tgz"
 
     private fun graphicsPackFile(context: Context): File =
-        File(ContainerManager.containerDir(context), "downloads/graphics-pack.tgz")
+        File(ContainerManager.containerDir(context), "downloads/graphics-pack-2.tgz")
 
     /**
      * Installs the graphics layer from its downloadable pack: Xvfb +
