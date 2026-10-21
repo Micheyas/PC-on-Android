@@ -490,17 +490,31 @@ object EngineManager {
         if (isGraphicsRunning()) return "Graphics session is already running."
         if (guestExePath == "/opt/tests/putty.exe") ensureGuestProgram(context, "putty.exe")
         val programBase = guestExePath.substringAfterLast('/')
-        // Bracketed so the pkill pattern can't match this session's own
-        // command line (same trick as the Xvfb/x11vnc patterns below).
         val programPattern =
             if (programBase.isEmpty()) "[p]utty.exe"
             else "[" + programBase.first() + "]" + programBase.drop(1)
+        // Kill leftovers from a previous session in a SEPARATE one-shot
+        // process. Doing this inside the session script was fatal: the
+        // bracket trick only stops pkill matching ITSELF — the session
+        // shell's command line embeds the whole script, including the
+        // unbracketed words Xvfb / x11vnc / putty.exe from the launch
+        // lines below, so pkill -f matched and killed its own parent
+        // shell before Xvfb ever started (on-device 2026-10-21: session
+        // stopped instantly, x.log never even created). This one-shot's
+        // command line contains ONLY the bracketed patterns, so it
+        // cannot match itself or its own shell.
+        val cleanup = listOf(
+            "pkill -f '[X]vfb' 2>/dev/null",
+            "pkill -f '[x]11vnc' 2>/dev/null",
+            "pkill -f '$programPattern' 2>/dev/null",
+            "pkill -f '[w]ineserver' 2>/dev/null",
+            "sleep 1",
+            "rm -f /tmp/.X0-lock /tmp/.X11-unix/X0",
+            "true"
+        ).joinToString("; ")
+        execInRootfs(context, glibcRootfsDir(context), cleanup, 20)
         val script = listOf(
             "if [ ! -f /root/.fonts-done ]; then for d in /usr/share/fonts/X11/*/; do mkfontdir \"\$d\" > /dev/null 2>&1; done; touch /root/.fonts-done; fi",
-            // Bracketed patterns: pkill -f must not match this script's
-            // own command line (which contains the same words).
-            "pkill -f '[X]vfb' 2>/dev/null; pkill -f '[x]11vnc' 2>/dev/null; pkill -f '$programPattern' 2>/dev/null; pkill -f '[w]ineserver' 2>/dev/null; sleep 1",
-            "rm -f /tmp/.X0-lock /tmp/.X11-unix/X0",
             "Xvfb :0 -screen 0 1024x600x24 > /root/x.log 2>&1 &",
             "sleep 2",
             "x11vnc -display :0 -rfbport 5900 -localhost -forever -shared -nopw > /root/vnc.log 2>&1 &",
