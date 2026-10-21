@@ -448,6 +448,13 @@ object EngineManager {
                 TarExtractor.extractTarGz(input, glibcRootfsDir(context))
             }
             if (isGraphicsInstalled(context)) {
+                // Build the X font indexes once, here: raw extraction
+                // runs no postinst. This used to be the session script's
+                // first line — one-time setup doesn't belong in the
+                // session path, and it was the prime suspect when
+                // sessions died before Xvfb ever started (v0.24).
+                val fonts = "for d in /usr/share/fonts/X11/*/; do mkfontdir \"\$d\" > /dev/null 2>&1; done; touch /root/.fonts-done; true"
+                execInRootfs(context, glibcRootfsDir(context), fonts, 90)
                 pack.delete()
                 "Graphics installed: X server + VNC are ready. Now tap START WINDOWS SCREEN (PUTTY)."
             } else {
@@ -514,7 +521,14 @@ object EngineManager {
         ).joinToString("; ")
         execInRootfs(context, glibcRootfsDir(context), cleanup, 20)
         val script = listOf(
-            "if [ ! -f /root/.fonts-done ]; then for d in /usr/share/fonts/X11/*/; do mkfontdir \"\$d\" > /dev/null 2>&1; done; touch /root/.fonts-done; fi",
+            // Trace everything the session shell does into a file the
+            // DIAGNOSE button can read back. Until v0.25 a session that
+            // died early left no evidence anywhere: its stdout went to
+            // an in-memory buffer the UI never showed, and the servers'
+            // own logs were only created once Xvfb started.
+            "exec > /root/session.log 2>&1",
+            "set -x",
+            "echo SESSION_START",
             "Xvfb :0 -screen 0 1024x600x24 > /root/x.log 2>&1 &",
             "sleep 2",
             "x11vnc -display :0 -rfbport 5900 -localhost -forever -shared -nopw > /root/vnc.log 2>&1 &",
@@ -564,6 +578,8 @@ object EngineManager {
             "grep -i ':170C' /proc/net/tcp /proc/net/tcp6 2>/dev/null || echo 'NOTHING listening on 5900'",
             "echo '== binaries =='",
             "ls -l /usr/bin/Xvfb /usr/bin/x11vnc 2>&1",
+            "echo '== session.log (session trace) =='",
+            "tail -n 60 /root/session.log 2>&1",
             "echo '== x.log (Xvfb) =='",
             "tail -n 30 /root/x.log 2>&1",
             "echo '== vnc.log (x11vnc) =='",
@@ -572,7 +588,10 @@ object EngineManager {
             "tail -n 20 /root/gui.log 2>&1"
         ).joinToString("; ")
         val (_, output) = execInRootfs(context, glibcRootfsDir(context), script, 30)
-        return output.trim()
+        val appSide = graphicsSessionLog().trim()
+        return output.trim() +
+            "\n== app-side session output ==\n" +
+            appSide.ifBlank { "(empty)" }
     }
 
     /** Starts /bin/sh -c [script] inside [rootfs] through PRoot and returns the live process. */

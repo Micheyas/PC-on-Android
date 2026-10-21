@@ -33,6 +33,7 @@ class MainActivity : AppCompatActivity() {
 
         val p = DeviceProfiler.detect(this)
         findViewById<TextView>(R.id.deviceInfo).text = listOf(
+            "App: v${packageManager.getPackageInfo(packageName, 0).versionName}",
             "Device: ${p.deviceName}",
             "Chip: ${p.chip}",
             "GPU: ${p.gpu}",
